@@ -80,13 +80,15 @@ dependencies = [
 
 [[package]]
 name = "cargo-warp"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "cargo_metadata",
  "clap",
  "indicatif",
  "owo-colors",
  "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
