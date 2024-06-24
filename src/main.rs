@@ -1,7 +1,6 @@
 mod build;
 mod transfer;
 use build::cargo_build;
-use clap::value_parser;
 use transfer::transfer_files;
 
 fn main() {
