@@ -6,29 +6,20 @@ use std::{
     process::{Command, Stdio},
 };
 
-pub fn transfer_files(files: Vec<std::path::PathBuf>, destination: &str) {
+fn transfer_file(file: std::path::PathBuf, destination: &str) {
     println!();
     println!(
         "{} {:?} -> {}",
         "Transfer".green().bold(),
-        files,
+        file,
         destination
     );
 
-    let mut filesize: u64 = 0;
-
-    for file in &files {
-        filesize += std::fs::metadata(file).unwrap().len();
-    }
+    let filesize = std::fs::metadata(file.clone()).unwrap().len();
 
     let bar = ProgressBar::new(filesize);
     let mut command = Command::new("rsync")
-        .args([
-            "-vaz",
-            "--progress",
-            files[0].to_str().unwrap(),
-            destination,
-        ])
+        .args(["-vaz", "--progress", (file.to_str().unwrap()), destination])
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
@@ -42,7 +33,12 @@ pub fn transfer_files(files: Vec<std::path::PathBuf>, destination: &str) {
         }
     }
     bar.finish();
-    println!("{} completed succesfully", "Transfer".green().bold());
+}
+
+pub fn transfer_files(files: Vec<std::path::PathBuf>, destination: &str) {
+    for file in &files {
+        transfer_file(file.to_path_buf(), destination);
+    }
 }
 
 fn parse_progress_bytes(input: &str) -> Option<u64> {
