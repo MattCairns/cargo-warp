@@ -7,6 +7,7 @@ description = "Build then copy your project binary to a remote host."
 homepage = "https://github.com/MattCairns"
 repository = "https://github.com/MattCairns"
 readme = "README.md"
+exclude = [ "flake.nix", "flake.lock", ]
 
 [dependencies]
 cargo_metadata = "0.18.1"
