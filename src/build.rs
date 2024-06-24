@@ -6,12 +6,12 @@ pub enum BuildType {
     Cross,
 }
 
-pub fn cargo_build(project: Option<&str>, target: Option<&str>, build_type: BuildType) -> Vec<std::path::PathBuf> {
+pub fn cargo_build(package: Option<&str>, target: Option<&str>, build_type: BuildType) -> Vec<std::path::PathBuf> {
     let mut args: Vec<&str> = vec!["build", "--message-format=json-render-diagnostics"];
 
-    if let Some(project) = project {
-        args.push("--project");
-        args.push(project)
+    if let Some(package) = package {
+        args.push("--package");
+        args.push(package)
     }
 
     if let Some(target) = target {

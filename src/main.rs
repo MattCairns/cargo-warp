@@ -20,7 +20,7 @@ enum Commands {
         cross: bool,
 
         #[arg(short, long)]
-        project: Option<String>,
+        package: Option<String>,
 
         #[arg(short, long)]
         target: Option<String>,
@@ -35,12 +35,12 @@ fn main() {
     match args.command {
         Commands::Warp {
             cross,
-            project,
+            package,
             target,
             destination,
         } => transfer_files(
             cargo_build(
-                project.as_deref(),
+                package.as_deref(),
                 target.as_deref(),
                 if cross {
                     BuildType::Cross

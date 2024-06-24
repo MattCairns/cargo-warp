@@ -1,6 +1,6 @@
 [package]
 name = "cargo-warp"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 license = "MIT"
 description = "Build then copy your project binary to a remote host."
