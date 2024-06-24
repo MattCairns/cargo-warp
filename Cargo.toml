@@ -2,7 +2,7 @@
 name = "cargo-warp"
 version = "0.1.1"
 edition = "2021"
-lisence = "MIT"
+license = "MIT"
 description = "Build then copy your project binary to a remote host."
 homepage = "https://github.com/MattCairns"
 repository = "https://github.com/MattCairns"
