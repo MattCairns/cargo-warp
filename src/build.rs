@@ -10,12 +10,12 @@ pub fn cargo_build(project: Option<&str>, target: Option<&str>, build_type: Buil
     let mut args: Vec<&str> = vec!["build", "--message-format=json-render-diagnostics"];
 
     if let Some(project) = project {
-        args.push("-p");
+        args.push("--project");
         args.push(project)
     }
 
     if let Some(target) = target {
-        args.push("-t");
+        args.push("--target");
         args.push(target)
     }
 

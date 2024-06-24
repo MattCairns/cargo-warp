@@ -1,45 +1,54 @@
 mod build;
 mod transfer;
-use build::cargo_build;
+use build::{cargo_build, BuildType};
+use clap::{Parser, Subcommand};
 use transfer::transfer_files;
 
+#[derive(Debug, Parser)] 
+#[command(name = "git")]
+#[command(about = "A fictional versioning CLI", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    #[command(arg_required_else_help = true)]
+    Warp {
+        #[arg(short, long)]
+        cross: bool,
+
+        #[arg(short, long)]
+        project: Option<String>,
+
+        #[arg(short, long)]
+        target: Option<String>,
+
+        #[arg(value_name = "DESTINATION")]
+        destination: String,
+    },
+}
+
 fn main() {
-    let cmd = clap::Command::new("cargo")
-        .bin_name("cargo")
-        .subcommand_required(true)
-        .subcommand(
-            clap::command!("warp")
-                .arg(
-                    clap::arg!(-c --cross <PATH>)
-                        .value_parser(clap::value_parser!(std::path::PathBuf)),
-                )
-                .arg(
-                    clap::arg!(-p --project <PROJECT> "Project to build")
-                        .required(false),
-                )
-                .arg(
-                    clap::arg!(-t --target <TARGET> "Target to build")
-                        .required(false),
-                )
-                .arg(
-                    clap::arg!(<DESTINATION> "Destination address to copy binary to.")
-                        .required(true),
-                ),
-        );
-    let matches = cmd.get_matches();
-    let matches = match matches.subcommand() {
-        Some(("warp", matches)) => matches,
-        _ => unreachable!("clap should ensure we don't get here"),
-    };
-
-    let mut p: Option<String> = None;
-    if let Some(project) = matches.get_one::<String>("project") {
-        p = Some(project.to_string());
+    let args = Cli::parse();
+    match args.command {
+        Commands::Warp {
+            cross,
+            project,
+            target,
+            destination,
+        } => transfer_files(
+            cargo_build(
+                project.as_deref(),
+                target.as_deref(),
+                if cross {
+                    BuildType::Cross
+                } else {
+                    BuildType::Cargo
+                },
+            ),
+            &destination,
+        ),
     }
-
-    let destination = matches
-        .get_one::<String>("DESTINATION")
-        .expect("Destination is required");
-
-    transfer_files(cargo_build(p.as_deref()), destination)
 }

@@ -1,6 +1,6 @@
 [package]
 name = "cargo-warp"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "MIT"
 description = "Build then copy your project binary to a remote host."
@@ -11,7 +11,7 @@ exclude = [ "flake.nix", "flake.lock", ]
 
 [dependencies]
 cargo_metadata = "0.18.1"
-clap = { version = "4.5.7", features = ["cargo"] }
+clap = { version = "4.5.7", features = ["cargo", "derive"] }
 indicatif = "0.17.8"
 owo-colors = "4.0.0"
 regex = "1.10.5"
