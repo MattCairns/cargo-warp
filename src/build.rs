@@ -15,7 +15,7 @@ pub fn cargo_build(
     target: Option<&str>,
     build_type: BuildType,
 ) -> Vec<std::path::PathBuf> {
-    let mut args: Vec<&str> = vec!["build", "--message-format=json-render-diagnostics"];
+    let mut args: Vec<&str> = vec!["--color", "always", "build", "--message-format=json-render-diagnostics"];
 
     if let Some(package) = package {
         args.push("--package");
@@ -47,14 +47,18 @@ pub fn cargo_build(
         if let Message::CompilerArtifact(artifact) = message.unwrap() {
             if artifact.executable.is_some() {
                 let mut p: std::path::PathBuf = path.clone();
-                p.push(std::path::PathBuf::from(
-                    artifact
-                        .executable
-                        .unwrap()
-                        .into_os_string()
-                        .into_string()
-                        .unwrap(),
-                ).strip_prefix("/").unwrap());
+                p.push(
+                    std::path::PathBuf::from(
+                        artifact
+                            .executable
+                            .unwrap()
+                            .into_os_string()
+                            .into_string()
+                            .unwrap(),
+                    )
+                    .strip_prefix("/")
+                    .unwrap(),
+                );
 
                 files.push(p.clone());
             }
