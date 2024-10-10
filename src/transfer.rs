@@ -29,7 +29,7 @@ fn transfer_file(file: std::path::PathBuf, destination: &str) {
     for line in lines {
         let progress = parse_progress_bytes(&String::from_utf8_lossy(&line.unwrap()));
         if let Some(progress) = progress {
-            bar.inc(progress);
+            bar.set_position(progress);
         }
     }
     bar.finish();
@@ -60,6 +60,12 @@ mod tests {
     fn test_progress_bytes_with_commas() {
         let input = "21,236,688 100%    2.82GB/s    0:00:00 (xfr#1, to-chk=0/1)";
         assert_eq!(parse_progress_bytes(input), Some(21_236_688));
+        let input = "21,236,688 32%    2.82GB/s    0:00:00 (xfr#1, to-chk=0/1)";
+        assert_eq!(parse_progress_bytes(input), Some(21_236_688));
+        let input = "236,688 100%    2.82GB/s    0:00:00 (xfr#1, to-chk=0/1)";
+        assert_eq!(parse_progress_bytes(input), Some(236_688));
+        let input = "688 100%    2.82GB/s    0:00:00 (xfr#1, to-chk=0/1)";
+        assert_eq!(parse_progress_bytes(input), Some(688));
     }
 
     #[test]
