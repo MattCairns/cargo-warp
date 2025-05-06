@@ -1,10 +1,11 @@
 mod build;
+mod delta;
 mod transfer;
 use build::{cargo_build, BuildType};
 use clap::{Parser, Subcommand};
 use transfer::transfer_files;
 
-#[derive(Debug, Parser)] 
+#[derive(Debug, Parser)]
 #[command(name = "git")]
 #[command(about = "A fictional versioning CLI", long_about = None)]
 struct Cli {
@@ -27,17 +28,22 @@ enum Commands {
 
         #[arg(value_name = "DESTINATION")]
         destination: String,
+
+        #[arg(short, long)]
+        xdelta: bool,
     },
 }
 
 fn main() {
     let args = Cli::parse();
+
     match args.command {
         Commands::Warp {
             cross,
             package,
             target,
             destination,
+            xdelta,
         } => transfer_files(
             cargo_build(
                 package.as_deref(),
@@ -49,6 +55,7 @@ fn main() {
                 },
             ),
             &destination,
+            xdelta,
         ),
     }
 }

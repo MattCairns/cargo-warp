@@ -5,6 +5,8 @@ use std::{
     process::{Command, Stdio},
 };
 
+use crate::delta::save_last_build;
+
 pub enum BuildType {
     Cargo,
     Cross,
@@ -15,7 +17,12 @@ pub fn cargo_build(
     target: Option<&str>,
     build_type: BuildType,
 ) -> Vec<std::path::PathBuf> {
-    let mut args: Vec<&str> = vec!["--color", "always", "build", "--message-format=json-render-diagnostics"];
+    let mut args: Vec<&str> = vec![
+        "--color",
+        "always",
+        "build",
+        "--message-format=json-render-diagnostics",
+    ];
 
     if let Some(package) = package {
         args.push("--package");

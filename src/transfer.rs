@@ -6,7 +6,9 @@ use std::{
     process::{Command, Stdio},
 };
 
-fn transfer_file(file: std::path::PathBuf, destination: &str) {
+use crate::delta::{create_patch_for_saved_binary, save_last_build};
+
+fn transfer_file(file: std::path::PathBuf, destination: &str, delta: bool) {
     println!();
     println!(
         "{} {:?} -> {}",
@@ -14,6 +16,13 @@ fn transfer_file(file: std::path::PathBuf, destination: &str) {
         file,
         destination
     );
+
+    let file = if delta {
+        create_patch_for_saved_binary(&file).unwrap()
+    } else {
+        file
+    };
+    save_last_build(&file);
 
     let filesize = std::fs::metadata(file.clone()).unwrap().len();
 
@@ -35,9 +44,9 @@ fn transfer_file(file: std::path::PathBuf, destination: &str) {
     bar.finish();
 }
 
-pub fn transfer_files(files: Vec<std::path::PathBuf>, destination: &str) {
+pub fn transfer_files(files: Vec<std::path::PathBuf>, destination: &str, delta: bool) {
     for file in &files {
-        transfer_file(file.to_path_buf(), destination);
+        transfer_file(file.to_path_buf(), destination, delta);
     }
 }
 
