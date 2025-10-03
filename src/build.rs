@@ -13,9 +13,15 @@ pub enum BuildType {
 pub fn cargo_build(
     package: Option<&str>,
     target: Option<&str>,
+    release: bool,
     build_type: BuildType,
 ) -> Vec<std::path::PathBuf> {
-    let mut args: Vec<&str> = vec!["--color", "always", "build", "--message-format=json-render-diagnostics"];
+    let mut args: Vec<&str> = vec![
+        "--color",
+        "always",
+        "build",
+        "--message-format=json-render-diagnostics",
+    ];
 
     if let Some(package) = package {
         args.push("--package");
@@ -25,6 +31,10 @@ pub fn cargo_build(
     if let Some(target) = target {
         args.push("--target");
         args.push(target)
+    }
+
+    if release {
+        args.push("--release");
     }
 
     let path = match build_type {

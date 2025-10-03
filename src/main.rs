@@ -4,7 +4,7 @@ use build::{cargo_build, BuildType};
 use clap::{Parser, Subcommand};
 use transfer::transfer_files;
 
-#[derive(Debug, Parser)] 
+#[derive(Debug, Parser)]
 #[command(name = "git")]
 #[command(about = "A fictional versioning CLI", long_about = None)]
 struct Cli {
@@ -25,6 +25,9 @@ enum Commands {
         #[arg(short, long)]
         target: Option<String>,
 
+        #[arg(short, long)]
+        release: bool,
+
         #[arg(value_name = "DESTINATION")]
         destination: String,
     },
@@ -37,11 +40,13 @@ fn main() {
             cross,
             package,
             target,
+            release,
             destination,
         } => transfer_files(
             cargo_build(
                 package.as_deref(),
                 target.as_deref(),
+                release,
                 if cross {
                     BuildType::Cross
                 } else {
