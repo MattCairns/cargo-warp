@@ -30,7 +30,10 @@
           version,
           profile,
         }: let
-          rust = pkgs.rust-bin.${version}.latest.${profile}.override {extensions = ["rust-src"];};
+          rust =
+            if builtins.elem version ["stable" "beta" "nightly"]
+            then pkgs.rust-bin.${version}.latest.${profile}.override {extensions = ["rust-src"];}
+            else pkgs.rust-bin.stable.${version}.${profile}.override {extensions = ["rust-src"];};
         in {
           name = "rust-" + version + "-" + profile;
 
@@ -61,12 +64,12 @@
 
         matrix = {
           stable-default = {
-            version = "stable";
+            version = "1.80.0";
             profile = "default";
           };
 
           stable-minimal = {
-            version = "stable";
+            version = "1.80.0";
             profile = "minimal";
           };
 

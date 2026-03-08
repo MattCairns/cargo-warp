@@ -34,6 +34,13 @@ enum Commands {
 }
 
 fn main() {
+    if let Err(err) = run() {
+        eprintln!("Error: {err:#}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> anyhow::Result<()> {
     let args = Cli::parse();
     match args.command {
         Commands::Warp {
@@ -42,8 +49,8 @@ fn main() {
             target,
             release,
             destination,
-        } => transfer_files(
-            cargo_build(
+        } => {
+            let files = cargo_build(
                 package.as_deref(),
                 target.as_deref(),
                 release,
@@ -52,8 +59,9 @@ fn main() {
                 } else {
                     BuildType::Cargo
                 },
-            ),
-            &destination,
-        ),
+            )?;
+            transfer_files(files, &destination)?;
+        }
     }
+    Ok(())
 }

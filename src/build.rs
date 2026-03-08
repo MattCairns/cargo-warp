@@ -1,3 +1,4 @@
+use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::Message;
 use serde::Deserialize;
 use std::{
@@ -15,7 +16,7 @@ pub fn cargo_build(
     target: Option<&str>,
     release: bool,
     build_type: BuildType,
-) -> Vec<std::path::PathBuf> {
+) -> Result<Vec<PathBuf>> {
     let mut args: Vec<&str> = vec![
         "--color",
         "always",
@@ -38,46 +39,57 @@ pub fn cargo_build(
     }
 
     let path = match build_type {
-        BuildType::Cargo => std::path::PathBuf::from("/"),
-        BuildType::Cross => locate_project(),
+        BuildType::Cargo => PathBuf::from("/"),
+        BuildType::Cross => locate_project()?,
     };
 
-    let mut command = Command::new(match build_type {
+    let build_tool = match build_type {
         BuildType::Cargo => "cargo",
         BuildType::Cross => "cross",
-    })
-    .args(args)
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap();
+    };
 
-    let reader = std::io::BufReader::new(command.stdout.take().unwrap());
-    let mut files: Vec<std::path::PathBuf> = vec![];
+    let mut command = Command::new(build_tool)
+        .args(args)
+        .stdout(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("failed to spawn '{build_tool}' — is it installed?"))?;
+
+    let reader = std::io::BufReader::new(
+        command
+            .stdout
+            .take()
+            .context("failed to capture build stdout")?,
+    );
+    let mut files: Vec<PathBuf> = vec![];
     for message in cargo_metadata::Message::parse_stream(reader) {
-        if let Message::CompilerArtifact(artifact) = message.unwrap() {
-            if artifact.executable.is_some() {
-                let mut p: std::path::PathBuf = path.clone();
+        if let Message::CompilerArtifact(artifact) =
+            message.context("failed to parse cargo build message")?
+        {
+            if let Some(executable) = artifact.executable {
+                let exe_str = executable
+                    .into_os_string()
+                    .into_string()
+                    .map_err(|_| anyhow!("executable path is not valid UTF-8"))?;
+                let mut p: PathBuf = path.clone();
                 p.push(
-                    std::path::PathBuf::from(
-                        artifact
-                            .executable
-                            .unwrap()
-                            .into_os_string()
-                            .into_string()
-                            .unwrap(),
-                    )
-                    .strip_prefix("/")
-                    .unwrap(),
+                    PathBuf::from(exe_str)
+                        .strip_prefix("/")
+                        .context("executable path doesn't start with '/'")?,
                 );
-
-                files.push(p.clone());
+                files.push(p);
             }
         }
     }
 
-    let _output = command.wait().expect("Couldn't get cargo's exit status");
+    let output = command
+        .wait()
+        .context("failed to get build tool's exit status")?;
 
-    files
+    if !output.success() {
+        bail!("{build_tool} build failed with status: {output}");
+    }
+
+    Ok(files)
 }
 
 #[derive(Deserialize)]
@@ -85,20 +97,20 @@ struct LocateProjectOutput {
     root: String,
 }
 
-fn locate_project() -> PathBuf {
+fn locate_project() -> Result<PathBuf> {
     let output = Command::new("cargo")
         .arg("locate-project")
         .output()
-        .expect("Failed to execute cargo locate-project");
+        .context("failed to execute 'cargo locate-project' — is cargo installed?")?;
 
     if !output.status.success() {
-        panic!("cargo locate-project failed with status: {}", output.status);
+        bail!("cargo locate-project failed with status: {}", output.status);
     }
 
     let locate_project_output: LocateProjectOutput = serde_json::from_slice(&output.stdout)
-        .expect("Failed to parse JSON output from cargo locate-project");
+        .context("failed to parse JSON output from 'cargo locate-project'")?;
 
     let mut path = PathBuf::from(locate_project_output.root);
     path.pop();
-    path
+    Ok(path)
 }
