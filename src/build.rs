@@ -2,13 +2,73 @@ use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::Message;
 use serde::Deserialize;
 use std::{
-    path::PathBuf,
+    io::BufRead,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuildType {
     Cargo,
     Cross,
+}
+
+fn build_command_args(package: Option<&str>, target: Option<&str>, release: bool) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "--color".to_string(),
+        "always".to_string(),
+        "build".to_string(),
+        "--message-format=json-render-diagnostics".to_string(),
+    ];
+
+    if let Some(package) = package {
+        args.push("--package".to_string());
+        args.push(package.to_string());
+    }
+
+    if let Some(target) = target {
+        args.push("--target".to_string());
+        args.push(target.to_string());
+    }
+
+    if release {
+        args.push("--release".to_string());
+    }
+
+    args
+}
+
+fn build_command_name(build_type: BuildType) -> &'static str {
+    match build_type {
+        BuildType::Cargo => "cargo",
+        BuildType::Cross => "cross",
+    }
+}
+
+fn executable_output_path(base_path: &Path, executable: &Path) -> Result<PathBuf> {
+    let mut path = base_path.to_path_buf();
+    path.push(
+        executable
+            .strip_prefix("/")
+            .context("executable path doesn't start with '/'")?,
+    );
+    Ok(path)
+}
+
+fn collect_executables_from_stream<R: BufRead>(reader: R, base_path: &Path) -> Result<Vec<PathBuf>> {
+    let mut files: Vec<PathBuf> = vec![];
+
+    for message in Message::parse_stream(reader) {
+        if let Message::CompilerArtifact(artifact) =
+            message.context("failed to parse cargo build message")?
+        {
+            if let Some(executable) = artifact.executable {
+                files.push(executable_output_path(base_path, executable.as_std_path())?);
+            }
+        }
+    }
+
+    Ok(files)
 }
 
 pub fn cargo_build(
@@ -17,36 +77,14 @@ pub fn cargo_build(
     release: bool,
     build_type: BuildType,
 ) -> Result<Vec<PathBuf>> {
-    let mut args: Vec<&str> = vec![
-        "--color",
-        "always",
-        "build",
-        "--message-format=json-render-diagnostics",
-    ];
-
-    if let Some(package) = package {
-        args.push("--package");
-        args.push(package)
-    }
-
-    if let Some(target) = target {
-        args.push("--target");
-        args.push(target)
-    }
-
-    if release {
-        args.push("--release");
-    }
+    let args: Vec<String> = build_command_args(package, target, release);
 
     let path = match build_type {
         BuildType::Cargo => PathBuf::from("/"),
         BuildType::Cross => locate_project()?,
     };
 
-    let build_tool = match build_type {
-        BuildType::Cargo => "cargo",
-        BuildType::Cross => "cross",
-    };
+    let build_tool = build_command_name(build_type);
 
     let mut command = Command::new(build_tool)
         .args(args)
@@ -60,26 +98,7 @@ pub fn cargo_build(
             .take()
             .context("failed to capture build stdout")?,
     );
-    let mut files: Vec<PathBuf> = vec![];
-    for message in cargo_metadata::Message::parse_stream(reader) {
-        if let Message::CompilerArtifact(artifact) =
-            message.context("failed to parse cargo build message")?
-        {
-            if let Some(executable) = artifact.executable {
-                let exe_str = executable
-                    .into_os_string()
-                    .into_string()
-                    .map_err(|_| anyhow!("executable path is not valid UTF-8"))?;
-                let mut p: PathBuf = path.clone();
-                p.push(
-                    PathBuf::from(exe_str)
-                        .strip_prefix("/")
-                        .context("executable path doesn't start with '/'")?,
-                );
-                files.push(p);
-            }
-        }
-    }
+    let files: Vec<PathBuf> = collect_executables_from_stream(reader, &path)?;
 
     let output = command
         .wait()
@@ -97,6 +116,15 @@ struct LocateProjectOutput {
     root: String,
 }
 
+fn parse_locate_project_output(output: &[u8]) -> Result<PathBuf> {
+    let locate_project_output: LocateProjectOutput = serde_json::from_slice(output)
+        .map_err(|err| anyhow!("failed to parse JSON output from 'cargo locate-project': {err}"))?;
+
+    let mut path = PathBuf::from(locate_project_output.root);
+    path.pop();
+    Ok(path)
+}
+
 fn locate_project() -> Result<PathBuf> {
     let output = Command::new("cargo")
         .arg("locate-project")
@@ -107,10 +135,153 @@ fn locate_project() -> Result<PathBuf> {
         bail!("cargo locate-project failed with status: {}", output.status);
     }
 
-    let locate_project_output: LocateProjectOutput = serde_json::from_slice(&output.stdout)
-        .context("failed to parse JSON output from 'cargo locate-project'")?;
+    parse_locate_project_output(&output.stdout)
+}
 
-    let mut path = PathBuf::from(locate_project_output.root);
-    path.pop();
-    Ok(path)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_build_command_args_without_optional_flags() {
+        let args = build_command_args(None, None, false);
+
+        assert_eq!(
+            args,
+            vec![
+                "--color",
+                "always",
+                "build",
+                "--message-format=json-render-diagnostics",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_build_command_args_with_all_optional_flags() {
+        let args = build_command_args(Some("cargo-warp"), Some("x86_64-unknown-linux-gnu"), true);
+
+        assert_eq!(
+            args,
+            vec![
+                "--color",
+                "always",
+                "build",
+                "--message-format=json-render-diagnostics",
+                "--package",
+                "cargo-warp",
+                "--target",
+                "x86_64-unknown-linux-gnu",
+                "--release",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_build_command_args_with_package_only() {
+        let args = build_command_args(Some("cargo-warp"), None, false);
+
+        assert_eq!(
+            args,
+            vec![
+                "--color",
+                "always",
+                "build",
+                "--message-format=json-render-diagnostics",
+                "--package",
+                "cargo-warp",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_build_command_args_with_target_and_release_only() {
+        let args = build_command_args(None, Some("x86_64-unknown-linux-gnu"), true);
+
+        assert_eq!(
+            args,
+            vec![
+                "--color",
+                "always",
+                "build",
+                "--message-format=json-render-diagnostics",
+                "--target",
+                "x86_64-unknown-linux-gnu",
+                "--release",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_build_command_name_by_type() {
+        assert_eq!(build_command_name(BuildType::Cargo), "cargo");
+        assert_eq!(build_command_name(BuildType::Cross), "cross");
+    }
+
+    #[test]
+    fn test_executable_output_path_for_cargo_build() {
+        let executable = PathBuf::from("/tmp/target/debug/cargo-warp");
+        let path = executable_output_path(Path::new("/"), &executable)
+            .expect("Expected valid executable output path for cargo");
+
+        assert_eq!(path, PathBuf::from("/tmp/target/debug/cargo-warp"));
+    }
+
+    #[test]
+    fn test_executable_output_path_for_cross_build() {
+        let executable = PathBuf::from("/target/aarch64-unknown-linux-gnu/release/cargo-warp");
+        let path = executable_output_path(Path::new("/workspace/project"), &executable)
+            .expect("Expected valid executable output path for cross");
+
+        assert_eq!(
+            path,
+            PathBuf::from("/workspace/project/target/aarch64-unknown-linux-gnu/release/cargo-warp")
+        );
+    }
+
+    #[test]
+    fn test_collect_executables_from_stream_with_single_artifact() {
+        let stream = Cursor::new(
+            r#"{"reason":"compiler-artifact","package_id":"cargo-warp 0.1.11 (path+file:///tmp/cargo-warp)","manifest_path":"/tmp/cargo-warp/Cargo.toml","target":{"kind":["bin"],"crate_types":["bin"],"name":"cargo-warp","src_path":"/tmp/cargo-warp/src/main.rs","edition":"2021","doc":true,"doctest":false,"test":true},"profile":{"opt_level":"0","debuginfo":2,"debug_assertions":true,"overflow_checks":true,"test":false},"features":[],"filenames":["/tmp/cargo-warp/target/debug/cargo-warp"],"executable":"/tmp/cargo-warp/target/debug/cargo-warp","fresh":false}
+"#,
+        );
+
+        let files = collect_executables_from_stream(stream, Path::new("/"))
+            .expect("Expected artifact stream parsing to succeed");
+
+        assert_eq!(
+            files,
+            vec![PathBuf::from("/tmp/cargo-warp/target/debug/cargo-warp")]
+        );
+    }
+
+    #[test]
+    fn test_collect_executables_from_stream_ignores_missing_executable() {
+        let stream = Cursor::new(
+            r#"{"reason":"compiler-artifact","package_id":"cargo-warp 0.1.11 (path+file:///tmp/cargo-warp)","manifest_path":"/tmp/cargo-warp/Cargo.toml","target":{"kind":["bin"],"crate_types":["bin"],"name":"cargo-warp","src_path":"/tmp/cargo-warp/src/main.rs","edition":"2021","doc":true,"doctest":false,"test":true},"profile":{"opt_level":"0","debuginfo":2,"debug_assertions":true,"overflow_checks":true,"test":false},"features":[],"filenames":["/tmp/cargo-warp/target/debug/deps/cargo_warp-12345"],"fresh":false}
+"#,
+        );
+
+        let files = collect_executables_from_stream(stream, Path::new("/"))
+            .expect("Expected artifact stream parsing to succeed");
+
+        assert_eq!(files, Vec::<PathBuf>::new());
+    }
+
+    #[test]
+    fn test_parse_locate_project_output_success() {
+        let output = br#"{"root":"/workspace/cargo-warp/Cargo.toml"}"#;
+        let path =
+            parse_locate_project_output(output).expect("Expected valid locate-project output");
+
+        assert_eq!(path, PathBuf::from("/workspace/cargo-warp"));
+    }
+
+    #[test]
+    fn test_parse_locate_project_output_invalid_json() {
+        let output = br#"{"root":123}"#;
+
+        assert!(parse_locate_project_output(output).is_err());
+    }
 }
