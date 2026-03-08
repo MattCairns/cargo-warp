@@ -1,7 +1,9 @@
 mod build;
+mod config;
 mod transfer;
 use build::{cargo_build, BuildType};
 use clap::{Parser, Subcommand};
+use config::{init_config_file, load_config_file, resolve_warp_options, CliWarpOptions};
 use transfer::transfer_files;
 
 #[derive(Debug, Parser)]
@@ -16,8 +18,14 @@ struct Cli {
 enum Commands {
     #[command(arg_required_else_help = true)]
     Warp {
-        #[arg(short, long)]
-        cross: bool,
+        #[arg(
+            short,
+            long,
+            default_missing_value = "true",
+            num_args = 0..=1,
+            require_equals = true
+        )]
+        cross: Option<bool>,
 
         #[arg(short, long)]
         package: Option<String>,
@@ -25,11 +33,27 @@ enum Commands {
         #[arg(short, long)]
         target: Option<String>,
 
-        #[arg(short, long)]
-        release: bool,
+        #[arg(
+            short,
+            long,
+            default_missing_value = "true",
+            num_args = 0..=1,
+            require_equals = true
+        )]
+        release: Option<bool>,
 
         #[arg(value_name = "DESTINATION")]
         destination: String,
+    },
+    #[command(subcommand)]
+    Config(ConfigCommands),
+}
+
+#[derive(Debug, Subcommand)]
+enum ConfigCommands {
+    Init {
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -54,17 +78,32 @@ fn execute(args: Cli) -> anyhow::Result<()> {
             release,
             destination,
         } => {
+            let config = load_config_file()?;
+            let resolved_options = resolve_warp_options(
+                config.as_ref(),
+                &destination,
+                CliWarpOptions {
+                    cross,
+                    package,
+                    target,
+                    release,
+                },
+            );
             let files = cargo_build(
-                package.as_deref(),
-                target.as_deref(),
-                release,
-                if cross {
+                resolved_options.package.as_deref(),
+                resolved_options.target.as_deref(),
+                resolved_options.release,
+                if resolved_options.cross {
                     BuildType::Cross
                 } else {
                     BuildType::Cargo
                 },
             )?;
             transfer_files(files, &destination)?;
+        }
+        Commands::Config(ConfigCommands::Init { force }) => {
+            let path = init_config_file(force)?;
+            println!("Config written to {}", path.display());
         }
     }
     Ok(())
@@ -87,12 +126,13 @@ mod tests {
                 release,
                 destination,
             } => {
-                assert!(!cross);
+                assert_eq!(cross, None);
                 assert_eq!(package, None);
                 assert_eq!(target, None);
-                assert!(!release);
+                assert_eq!(release, None);
                 assert_eq!(destination, "user@host:/tmp/bin");
             }
+            _ => panic!("Expected warp command"),
         }
     }
 
@@ -119,12 +159,33 @@ mod tests {
                 release,
                 destination,
             } => {
-                assert!(cross);
+                assert_eq!(cross, Some(true));
                 assert_eq!(package, Some("cargo-warp".to_string()));
                 assert_eq!(target, Some("aarch64-unknown-linux-gnu".to_string()));
-                assert!(release);
+                assert_eq!(release, Some(true));
                 assert_eq!(destination, "user@host:/tmp/bin");
             }
+            _ => panic!("Expected warp command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_warp_with_explicit_boolean_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-warp",
+            "warp",
+            "--cross=false",
+            "--release=false",
+            "user@host:/tmp/bin",
+        ])
+        .expect("Expected valid warp command with explicit boolean flags");
+
+        match cli.command {
+            Commands::Warp { cross, release, .. } => {
+                assert_eq!(cross, Some(false));
+                assert_eq!(release, Some(false));
+            }
+            _ => panic!("Expected warp command"),
         }
     }
 
@@ -145,5 +206,31 @@ mod tests {
         ]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_config_init() {
+        let cli = Cli::try_parse_from(["cargo-warp", "config", "init"])
+            .expect("Expected valid config init command");
+
+        match cli.command {
+            Commands::Config(ConfigCommands::Init { force }) => {
+                assert!(!force);
+            }
+            _ => panic!("Expected config init command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_config_init_with_force() {
+        let cli = Cli::try_parse_from(["cargo-warp", "config", "init", "--force"])
+            .expect("Expected valid config init command with force");
+
+        match cli.command {
+            Commands::Config(ConfigCommands::Init { force }) => {
+                assert!(force);
+            }
+            _ => panic!("Expected config init command"),
+        }
     }
 }
