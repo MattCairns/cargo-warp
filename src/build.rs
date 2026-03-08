@@ -55,7 +55,10 @@ fn executable_output_path(base_path: &Path, executable: &Path) -> Result<PathBuf
     Ok(path)
 }
 
-fn collect_executables_from_stream<R: BufRead>(reader: R, base_path: &Path) -> Result<Vec<PathBuf>> {
+fn collect_executables_from_stream<R: BufRead>(
+    reader: R,
+    base_path: &Path,
+) -> Result<Vec<PathBuf>> {
     let mut files: Vec<PathBuf> = vec![];
 
     for message in Message::parse_stream(reader) {
