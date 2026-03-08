@@ -1,13 +1,13 @@
 {
-  description = "Rust shells";
+  description = "cargo-warp: build and copy your project binary to a remote host";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = inputs @ {flake-parts, ...}:
-    flake-parts.lib.mkFlake {inherit inputs;} {
+  outputs = inputs @ {flake-parts, ...}: let
+    self = flake-parts.lib.mkFlake {inherit inputs;} {
       systems = [
         "x86_64-linux"
         "x86_64-darwin"
@@ -96,6 +96,11 @@
       in {
         formatter = pkgs.alejandra;
 
+        packages = {
+          cargo-warp = pkgs.callPackage ./nix/package.nix {};
+          default = config.packages.cargo-warp;
+        };
+
         devShells =
           builtins.mapAttrs
           (
@@ -132,5 +137,11 @@
               };
           };
       };
+    };
+  in
+    self
+    // {
+      homeManagerModules.default = import ./nix/hm-module.nix self;
+      homeManagerModules.cargo-warp = self.homeManagerModules.default;
     };
 }
